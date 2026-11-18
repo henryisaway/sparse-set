@@ -1,73 +1,15 @@
+#include "benchmark.h"
 #include <locale.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <string.h>
 #include <sys/resource.h>
 #include <time.h>
 #include <unistd.h>
 
-typedef int8_t i8;
-typedef int32_t i32;
-typedef int64_t i64;
-typedef uint8_t u8;
-typedef uint32_t u32;
-typedef uint64_t u64;
-typedef uint64_t Entity;
-typedef struct timespec Time;
-typedef struct rusage Resources;
-
-#define PAGE_SIZE 4096
-#define INIT_ALLOC_SIZE 16
-#define ENTITY_AMT (100ULL * 1000 * 1000)
-
-static Entity g_entity_count = 0;
-
-typedef struct {
-    u32 x;
-    u32 y;
-} Position;
-
-typedef struct {
-    u32         page_count;
-    u32         capacity;
-    u32         size;
-    Position   *dense;
-    u32       **sparse;
-} SparseSet;
-
-typedef struct {
-    const char *name;
-    u64         attempts;
-    u32         inserted;
-    u32         duplicates_skipped;
-    double      elapsed_seconds;
-    double      throughput_mops;
-
-    // Page statistics
-    u32         page_count;
-    u32         allocated_pages;
-    u32         min_page_components;
-    u32         max_page_components;
-    double      avg_page_components;
-    double      page_occupancy_pct;
-    u32         fill_buckets[4]; // [0-25%], [26-50%], [51-75%], [76-100%]
-
-    // Memory footprint
-    u64         dense_bytes;
-    u64         page_dir_bytes;
-    u64         page_payload_bytes;
-    u64         struct_overhead_bytes;
-    u64         total_structure_bytes;
-    double      bytes_per_entity;
-    i64         live_rss_kib;
-    i64         peak_rss_kib;
-} BenchmarkMetrics;
-
 u64 rand64(void) {
     u64 r = 0;
     for (int i = 0; i < 5; i++) {
-        // Mask with 0x7FFF to ensure 15 bits regardless of platform.
         r = (r << 15) | (rand() & 0x7FFF);
     }
     return r;
@@ -79,10 +21,9 @@ u64 rand_range(u64 min, u64 max) {
 }
 
 i64 get_peak_mem_usage(void) {
-    Resources r;
+    struct rusage r;
     if (getrusage(RUSAGE_SELF, &r) == 0)
         return r.ru_maxrss;
-
     return -1;
 }
 
@@ -103,113 +44,7 @@ i64 get_current_rss_kib(void) {
     return (i64)((resident_pages * page_size) / 1024);
 }
 
-Entity entity_create(void) {
-    return g_entity_count++;
-}
-
-SparseSet *sparse_set_create(void) {
-    SparseSet *set  = (SparseSet *)calloc(1, sizeof(SparseSet));
-
-    set->capacity   = INIT_ALLOC_SIZE;
-    set->page_count = 1;
-    set->size       = 0;
-    set->dense      = calloc(set->capacity, sizeof(Position));
-    set->sparse     = calloc(set->page_count, sizeof(u32 *));
-    *(set->sparse)  = NULL;
-
-    return set;
-}
-
-void sparse_set_destroy(SparseSet *set) {
-    for (u32 i = 0; i < set->page_count; i++) {
-        if (set->sparse[i] != NULL)
-            free(set->sparse[i]);
-    }
-    free(set->sparse);
-    free(set->dense);
-    free(set);
-}
-
-Position *sparse_set_get(SparseSet *set, Entity e) {
-    u32 page_index  = (u32)(e / PAGE_SIZE);
-    u32 page_offset = (u32)(e % PAGE_SIZE);
-
-    // Page doesn't exist
-    if (page_index >= set->page_count)
-        return NULL;
-
-    if (set->sparse[page_index] == NULL)
-        return NULL;
-
-    u32 dense_index = set->sparse[page_index][page_offset];
-    if (dense_index == UINT32_MAX) {
-        return NULL;
-    }
-
-    Position *position = &set->dense[dense_index];
-
-    return position;
-}
-
-void sparse_set_insert(SparseSet *set, Entity e, Position p) {
-    u32 page_index  = (u32)(e / PAGE_SIZE);
-    u32 page_offset = (u32)(e % PAGE_SIZE);
-
-    if (page_index >= set->page_count) {
-        // Not enough valid page pointers.
-        u32 new_page_count          = page_index + 1;
-        u32 **new_sparse_page_array = realloc(set->sparse, new_page_count * sizeof(u32 *));
-
-        if (new_sparse_page_array) {
-            set->sparse = new_sparse_page_array;
-        } else {
-            exit(1);
-        }
-
-        for (u32 i = set->page_count; i < new_page_count; i++) {
-            set->sparse[i] = NULL;
-        }
-
-        set->page_count = new_page_count;
-    }
-
-    if (set->sparse[page_index] == NULL) {
-        // Page hasn't been allocated yet.
-        u32 *new_sparse_page = malloc(PAGE_SIZE * sizeof(u32));
-        if (new_sparse_page) {
-            set->sparse[page_index] = new_sparse_page;
-        } else {
-            exit(1);
-        }
-
-        memset(set->sparse[page_index], UINT8_MAX, PAGE_SIZE * sizeof(u32));
-    }
-
-    // By this point, the page is guaranteed to exist.
-
-    if (set->sparse[page_index][page_offset] != UINT32_MAX) {
-        // Entity is already in the sparse set
-        return;
-    }
-
-    if (set->size == set->capacity) {
-        // Need to increase the capacity of dense array.
-
-        Position* new_dense_array = realloc(set->dense, 2 * set->capacity * sizeof(Position));
-        if (new_dense_array) {
-            set->dense = new_dense_array;
-        } else {
-            exit(1);
-        }
-        
-        set->capacity *= 2;
-    }
-
-    set->dense[set->size]                = p;
-    set->sparse[page_index][page_offset] = set->size++;
-}
-
-BenchmarkMetrics collect_metrics(SparseSet *set, const char *test_name, u64 attempts, double elapsed_seconds) {
+BenchmarkMetrics benchmark_collect_metrics(SparseSet *set, const char *test_name, u64 attempts, double elapsed_seconds) {
     BenchmarkMetrics m;
     memset(&m, 0, sizeof(m));
 
@@ -261,7 +96,6 @@ BenchmarkMetrics collect_metrics(SparseSet *set, const char *test_name, u64 atte
         m.page_occupancy_pct = ((double)total_components / ((u64)m.allocated_pages * PAGE_SIZE)) * 100.0;
     }
 
-    // Exact structural memory calculation
     m.dense_bytes           = (u64)set->capacity * sizeof(Position);
     m.page_dir_bytes        = (u64)set->page_count * sizeof(u32 *);
     m.page_payload_bytes    = (u64)m.allocated_pages * PAGE_SIZE * sizeof(u32);
@@ -275,7 +109,35 @@ BenchmarkMetrics collect_metrics(SparseSet *set, const char *test_name, u64 atte
     return m;
 }
 
-void print_benchmark_metadata(const BenchmarkMetrics *m) {
+BenchmarkMetrics benchmark_run(BenchmarkConfig config) {
+    SparseSet *set = sparse_set_create();
+
+    struct timespec start, end;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+
+    for (u64 i = 0; i < config.count; i++) {
+        Entity ent = config.generator(i, config.count, config.userdata);
+        Position pos = {
+            .x = (u32)(rand() % 500),
+            .y = (u32)(rand() % 500)
+        };
+        sparse_set_insert(set, ent, pos);
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &end);
+
+    double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
+    BenchmarkMetrics metrics = benchmark_collect_metrics(set, config.name, config.count, elapsed);
+
+    if (!config.silent) {
+        benchmark_print_metadata(&metrics);
+    }
+
+    sparse_set_destroy(set);
+    return metrics;
+}
+
+void benchmark_print_metadata(const BenchmarkMetrics *m) {
     if (!setlocale(LC_NUMERIC, "")) {
         setlocale(LC_NUMERIC, "en_GB.UTF-8");
     }
@@ -301,7 +163,7 @@ void print_benchmark_metadata(const BenchmarkMetrics *m) {
     printf("    Allocated Pages Mem   : %'u pages   (%8.2f MiB | %'lu B)\n",
            m->allocated_pages,
            (double)m->page_payload_bytes / (1024.0 * 1024.0), (unsigned long)m->page_payload_bytes);
-    printf("    Total Struct Memory   : %8.2f MiB (%'lu B)\n",
+    printf("    Total Struct Memory   :%8.2f MiB (%'lu B)\n",
            (double)m->total_structure_bytes / (1024.0 * 1024.0), (unsigned long)m->total_structure_bytes);
     printf("    Average Memory/Entity : %.2f bytes/entity\n", m->bytes_per_entity);
     printf("    Process Live RSS      : %8.2f MiB (%'ld KiB)\n",
@@ -316,23 +178,18 @@ void print_benchmark_metadata(const BenchmarkMetrics *m) {
     printf("    Components / Page     : Min: %'u | Avg: %.1f | Max: %'u (Fullness: %.1f%%)\n",
            m->min_page_components, m->avg_page_components, m->max_page_components, m->page_occupancy_pct);
     printf("    Page Fill Buckets     :\n");
-    printf("      [  0%% -  25%% ]     : %'7u pages (%5.1f%%)\n",
+    printf("      [  0%% -  25%% ]      : %'7u pages (%5.1f%%)\n",
            m->fill_buckets[0], m->allocated_pages ? (double)m->fill_buckets[0] / m->allocated_pages * 100.0 : 0.0);
-    printf("      [ 26%% -  50%% ]     : %'7u pages (%5.1f%%)\n",
+    printf("      [ 26%% -  50%% ]      : %'7u pages (%5.1f%%)\n",
            m->fill_buckets[1], m->allocated_pages ? (double)m->fill_buckets[1] / m->allocated_pages * 100.0 : 0.0);
-    printf("      [ 51%% -  75%% ]     : %'7u pages (%5.1f%%)\n",
+    printf("      [ 51%% -  75%% ]      : %'7u pages (%5.1f%%)\n",
            m->fill_buckets[2], m->allocated_pages ? (double)m->fill_buckets[2] / m->allocated_pages * 100.0 : 0.0);
-    printf("      [ 76%% - 100%% ]     : %'7u pages (%5.1f%%)\n",
+    printf("      [ 76%% - 100%% ]      : %'7u pages (%5.1f%%)\n",
            m->fill_buckets[3], m->allocated_pages ? (double)m->fill_buckets[3] / m->allocated_pages * 100.0 : 0.0);
     printf("================================================================================\n\n");
 }
 
-void sparse_set_print_metadata(SparseSet *set) {
-    BenchmarkMetrics m = collect_metrics(set, "Sparse Set Metadata", set->size, 0.0);
-    print_benchmark_metadata(&m);
-}
-
-void print_benchmark_comparison(const BenchmarkMetrics *seq, const BenchmarkMetrics *rand_m) {
+void benchmark_print_comparison(const BenchmarkMetrics *seq, const BenchmarkMetrics *rand_m) {
     if (!setlocale(LC_NUMERIC, "")) {
         setlocale(LC_NUMERIC, "en_GB.UTF-8");
     }
@@ -382,63 +239,4 @@ void print_benchmark_comparison(const BenchmarkMetrics *seq, const BenchmarkMetr
            (double)seq->live_rss_kib / 1024.0, (double)rand_m->live_rss_kib / 1024.0,
            (seq->live_rss_kib > 0) ? (double)rand_m->live_rss_kib / seq->live_rss_kib : 0.0);
     printf("################################################################################\n");
-}
-
-int main(int argc, char **argv) {
-    u64 entity_amt = ENTITY_AMT;
-    if (argc > 1) {
-        long long val = atoll(argv[1]);
-        if (val > 0) {
-            entity_amt = (u64)val;
-        }
-    }
-
-    if (!setlocale(LC_NUMERIC, "")) {
-        setlocale(LC_NUMERIC, "en_GB.UTF-8");
-    }
-
-    printf("Starting SparseSet Benchmark (ENTITY_AMT = %'lu, PAGE_SIZE = %d)\n\n",
-           (unsigned long)entity_amt, PAGE_SIZE);
-
-    Time start, end;
-
-    // Sequential ID insertions
-    SparseSet *seq_set = sparse_set_create();
-
-    clock_gettime(CLOCK_MONOTONIC, &start);
-    for (u64 i = 0; i < entity_amt; i++) {
-        Entity ent = entity_create();
-        sparse_set_insert(seq_set, ent, (Position) {
-                                            .x = (u32)(rand() % 500),
-                                            .y = (u32)(rand() % 500)
-                                        });
-    }
-    clock_gettime(CLOCK_MONOTONIC, &end);
-
-    double seq_elapsed = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
-    BenchmarkMetrics seq_metrics = collect_metrics(seq_set, "Sequential IDs Insertion", entity_amt, seq_elapsed);
-    print_benchmark_metadata(&seq_metrics);
-    sparse_set_destroy(seq_set);
-
-    // Randomised ID insertions
-    SparseSet *rand_set = sparse_set_create();
-
-    clock_gettime(CLOCK_MONOTONIC, &start);
-    for (u64 i = 0; i < entity_amt; i++) {
-        Entity ent = rand_range(0, entity_amt);
-        sparse_set_insert(rand_set, ent, (Position) {
-                                             .x = (u32)(rand() % 500),
-                                             .y = (u32)(rand() % 500)
-                                         });
-    }
-    clock_gettime(CLOCK_MONOTONIC, &end);
-
-    double rand_elapsed = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
-    BenchmarkMetrics rand_metrics = collect_metrics(rand_set, "Randomized IDs Insertion", entity_amt, rand_elapsed);
-    print_benchmark_metadata(&rand_metrics);
-    sparse_set_destroy(rand_set);
-
-    print_benchmark_comparison(&seq_metrics, &rand_metrics);
-
-    return 0;
 }

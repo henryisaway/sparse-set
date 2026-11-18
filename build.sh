@@ -1,8 +1,7 @@
 #!/bin/bash
 set -e
 
-if ! [ -d "bin" ]; then
-     mkdir bin
-fi
+BUILD_DIR="build"
 
-gcc -g main.c -o bin/ss
+cmake -B "${BUILD_DIR}" -S . -DCMAKE_BUILD_TYPE=Release
+cmake --build "${BUILD_DIR}"
