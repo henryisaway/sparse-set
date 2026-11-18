@@ -1,18 +1,24 @@
+#include <locale.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <sys/resource.h>
 #include <time.h>
 
+typedef int8_t i8;
+typedef int32_t i32;
+typedef int64_t i64;
 typedef uint8_t u8;
 typedef uint32_t u32;
 typedef uint64_t u64;
 typedef uint64_t Entity;
 typedef struct timespec Time;
+typedef struct rusage Resources;
 
 #define PAGE_SIZE 4096
 #define INIT_ALLOC_SIZE 16
-#define ENTITY_AMT 200'000'000
+#define ENTITY_AMT 100 * 1000 * 1000
 
 static Entity g_entity_count = 0;
 
@@ -29,6 +35,27 @@ typedef struct {
     u32       **sparse;
 } SparseSet;
 
+u64 rand64(void) {
+    u64 r = 0;
+    for (int i = 0; i < 5; i++) {
+        // Mask with 0x7FFF to ensure 15 bits regardless of platform.
+        r = (r << 15) | (rand() & 0x7FFF);
+    }
+    return r;
+}
+
+u64 rand_range(u64 min, u64 max) {
+    u64 range = max - min + 1;
+    return (rand64() % range) + min;
+}
+
+i64 get_peak_mem_usage() {
+    Resources r;
+    if (getrusage(RUSAGE_SELF, &r) == 0)
+        return r.ru_maxrss;
+
+    return -1;
+}
 
 Entity entity_create(void) {
     return g_entity_count++;
@@ -112,6 +139,12 @@ void sparse_set_insert(SparseSet *set, Entity e, Position p) {
     }
 
     // By this point, the page is guaranteed to exist.
+
+    if (set->sparse[page_index][page_offset] != UINT32_MAX) {
+        // Entity is already in the sparse set
+        return;
+    }
+
     if (set->size == set->capacity) {
         // Need to increase the capacity of dense array.
 
@@ -129,26 +162,30 @@ void sparse_set_insert(SparseSet *set, Entity e, Position p) {
     set->sparse[page_index][page_offset] = set->size++;
 }
 
-void sparse_set_print(SparseSet *set) {
-
-    printf("ALL PAGES (SPARSE SET) ===========================\n");
-    for (int i = 0; i < set->page_count; i++) {
+void sparse_set_print_metadata(SparseSet *set) {
+    setlocale(LC_NUMERIC, "en_GB");
+    printf("METADATA =========================================\n");
+    printf("Size: %'d (%'ld)MiB\n", set->size, get_peak_mem_usage() / 1024);
+    printf("Capacity: %'d\n", set->capacity);
+    printf("%'d allocated pages.\n", set->page_count);
+    printf("\nALL PAGES (SPARSE SET) ===========================\n");
+    for (int page = 0; page < set->page_count; page++) {
         
-        if (set->sparse[i] != NULL) {
-            printf("Page #%d:\n", i);
+        if (set->sparse[page] != NULL) {
+            printf("Page #%'d allocated with ", page);
 
-            for (int j = 0; j < PAGE_SIZE; j++) {
-                if (set->sparse[i][j] != UINT32_MAX)
-                    printf("- Entity #%d exists.\n", PAGE_SIZE * i + j);
+            u32 amt_components = 0;
+            for (int offset = 0; offset < PAGE_SIZE; offset++) {
+                if (set->sparse[page][offset] != UINT32_MAX)
+                    amt_components++;
             }
+
+            printf("%'d components.\n", amt_components);
         }
     }
 
-    printf("\nPOSITIONS (DENSE SET) ============================\n");
-    for (int i = 0; i < set->size; i++) {
-        
-        printf("{.x = %d, .y = %d}\n", set->dense[i].x, set->dense[i].y);
-    }
+
+
 }
 
 int main(void) {
@@ -160,22 +197,20 @@ int main(void) {
     SparseSet *set = sparse_set_create();
 
     for (int i = 0; i < ENTITY_AMT; i++) {
-        Entity ent = entity_create();
+        Entity ent = rand_range(0, ENTITY_AMT);
         sparse_set_insert(set, ent, (Position) {
                                         .x = rand() % 500,
                                         .y = rand() % 500
                                     });
     }
 
-    // sparse_set_print(set);
-
-    sparse_set_destroy(set);
-
     clock_gettime(CLOCK_MONOTONIC, &end);
-    double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec)/1e9;
 
-    //printf("\n==================================================\n");
-    printf("Elapsed time: %f seconds.\n", elapsed);
+    double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec)/1e9;
+    printf("Elapsed time: %f seconds.\n\n", elapsed);
+    sparse_set_print_metadata(set);
+    
+    sparse_set_destroy(set);
 
     return 0;
 }
