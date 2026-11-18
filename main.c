@@ -2,14 +2,17 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <time.h>
 
 typedef uint8_t u8;
 typedef uint32_t u32;
 typedef uint64_t u64;
 typedef uint64_t Entity;
+typedef struct timespec Time;
 
-#define PAGE_SIZE 16
+#define PAGE_SIZE 4096
 #define INIT_ALLOC_SIZE 16
+#define ENTITY_AMT 200'000'000
 
 static Entity g_entity_count = 0;
 
@@ -149,18 +152,30 @@ void sparse_set_print(SparseSet *set) {
 }
 
 int main(void) {
+
+    Time start, end;
+
+    clock_gettime(CLOCK_MONOTONIC, &start);
+
     SparseSet *set = sparse_set_create();
 
-    for (int i = 0; i < 50; i++) {
+    for (int i = 0; i < ENTITY_AMT; i++) {
         Entity ent = entity_create();
-        sparse_set_insert(set, ent, (Position){
+        sparse_set_insert(set, ent, (Position) {
                                         .x = rand() % 500,
                                         .y = rand() % 500
                                     });
     }
 
-    sparse_set_print(set);
+    // sparse_set_print(set);
 
     sparse_set_destroy(set);
+
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec)/1e9;
+
+    //printf("\n==================================================\n");
+    printf("Elapsed time: %f seconds.\n", elapsed);
+
     return 0;
 }

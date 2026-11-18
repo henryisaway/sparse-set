@@ -1,4 +1,8 @@
 #!/bin/bash
-
 set -e
-gcc -g main.c -o ss
+
+if ! [ -d "bin" ]; then
+     mkdir bin
+fi
+
+gcc -g main.c -o bin/ss
