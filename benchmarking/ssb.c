@@ -1,5 +1,5 @@
-#include "sparseset.h"
-#include "benchmark.h"
+#include "../sparseset.h"
+#include "../benchmarking/benchmark.h"
 #include <locale.h>
 #include <stdio.h>
 #include <stdlib.h>

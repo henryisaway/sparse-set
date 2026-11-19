@@ -1,7 +1,7 @@
 #ifndef BENCHMARK_H
 #define BENCHMARK_H
 
-#include "sparseset.h"
+#include "../sparseset.h"
 #include <stdbool.h>
 
 typedef struct {

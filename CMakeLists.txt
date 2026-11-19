@@ -11,13 +11,20 @@ endif()
 set(CMAKE_C_FLAGS_DEBUG "-g -Wall -Wextra")
 set(CMAKE_C_FLAGS_RELEASE "-O3 -Wall -Wextra")
 
-# Output executable directly to bin/
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+# Compile sparse set benchmarking
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/build)
 
-add_executable(ss
-    ss.c
+add_executable(ssb
     sparseset.c
-    benchmark.c
+    benchmarking/ssb.c
+    benchmarking/benchmark.c
 )
 
-target_include_directories(ss PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(ssb PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+# ECS interface prototype
+add_executable(ecs
+    sparseset.c
+    ecs/ecs_p.c
+    ecs/ecs.c
+)
