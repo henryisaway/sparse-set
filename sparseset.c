@@ -1,6 +1,10 @@
 #include "sparseset.h"
+
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include "type_aliases.h"
 
 static Entity g_entity_count = 0;
 
@@ -12,18 +16,20 @@ void entity_reset_counter(void) {
     g_entity_count = 0;
 }
 
-SparseSet *sparse_set_create(void) {
+SparseSet *sparse_set_create(u64 stride) {
     SparseSet *set  = (SparseSet *)calloc(1, sizeof(SparseSet));
     if (!set) exit(1);
 
     set->capacity   = INIT_ALLOC_SIZE;
     set->page_count = 1;
     set->size       = 0;
-    set->dense      = (Position *)calloc(set->capacity, sizeof(Position));
+    set->stride     = stride;
+    set->data       = calloc(set->capacity, stride);
+    set->owners     = calloc(set->capacity, sizeof(u32));
     set->sparse     = (u32 **)calloc(set->page_count, sizeof(u32 *));
 
-    if (!set->dense || !set->sparse) {
-        free(set->dense);
+    if (!set->data || !set->sparse) {
+        free(set->data);
         free(set->sparse);
         free(set);
         exit(1);
@@ -43,11 +49,12 @@ void sparse_set_destroy(SparseSet *set) {
         }
     }
     free(set->sparse);
-    free(set->dense);
+    free(set->owners);
+    free(set->data);
     free(set);
 }
 
-Position *sparse_set_get(SparseSet *set, Entity e) {
+void *sparse_set_get(SparseSet *set, Entity e) {
     u32 page_index  = (u32)(e / PAGE_SIZE);
     u32 page_offset = (u32)(e % PAGE_SIZE);
 
@@ -57,17 +64,17 @@ Position *sparse_set_get(SparseSet *set, Entity e) {
     if (set->sparse[page_index] == NULL)
         return NULL;
 
-    u32 dense_index = set->sparse[page_index][page_offset];
-    if (dense_index == UINT32_MAX) {
+    u32 data_index = set->sparse[page_index][page_offset];
+    if (data_index == UINT32_MAX) {
         return NULL;
     }
 
-    return &set->dense[dense_index];
+    return (u8*)(set->data) + (data_index * set->stride);
 }
 
-bool sparse_set_insert(SparseSet *set, Entity e, Position p) {
-    u32 page_index  = (u32)(e / PAGE_SIZE);
-    u32 page_offset = (u32)(e % PAGE_SIZE);
+bool sparse_set_insert(SparseSet *set, Entity e, void *data) {
+    u32 page_index  = (u32)(e >> 12);
+    u32 page_offset = (u32)(e % 4095);
 
     if (page_index >= set->page_count) {
         u32 new_page_count = page_index + 1;
@@ -96,23 +103,31 @@ bool sparse_set_insert(SparseSet *set, Entity e, Position p) {
         memset(set->sparse[page_index], UINT8_MAX, PAGE_SIZE * sizeof(u32));
     }
 
-    if (set->sparse[page_index][page_offset] != UINT32_MAX) {
+    u32 data_index = set->sparse[page_index][page_offset];
+    if (data_index != UINT32_MAX) {
         // Entity is already present
         return false;
     }
 
     if (set->size == set->capacity) {
         u32 new_capacity = set->capacity * 2;
-        Position *new_dense_array = (Position *)realloc(set->dense, new_capacity * sizeof(Position));
-        if (!new_dense_array) {
+        void *new_data_array = realloc(set->data, new_capacity * set->stride);
+        if (!new_data_array) {
             exit(1);
         }
 
-        set->dense = new_dense_array;
+        void *new_owners_array = realloc(set->owners, new_capacity * sizeof(u32));
+        if (!new_owners_array) {
+            exit(1);
+        }
+
+        set->data = new_data_array;
         set->capacity = new_capacity;
     }
 
-    set->dense[set->size]                = p;
+    u8 *dest = (u8*)(set->data) + (data_index * set->stride);
+    memcpy(dest, data, set->stride);
+    set->owners[data_index] = e;
     set->sparse[page_index][page_offset] = set->size++;
     return true;
 }
