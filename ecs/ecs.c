@@ -1,4 +1,5 @@
 #include "ecs.h"
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #define MIRA_DARRAY_IMPL
@@ -49,9 +50,29 @@ void entity_reset_ids(void) {
     ctx->next_entity_id = 0;
 }
 
+bool entity_bind_component(TypeID t, Entity e, void *data) {
+    ECSContext *ctx = active_ctx;
+    if (!ctx) exit(1);
+
+    if (t >= ctx->next_type_id) exit(1);
+    SparseSet *set = &ctx->sets[t];
+
+    sparse_set_insert(set, e, data);
+    return true;
+}
+
+void *entity_get_component(TypeID t, Entity e) {
+    ECSContext *ctx = active_ctx;
+    if (!ctx) exit(1);
+
+    if (t >= ctx->next_type_id) exit(1);
+    SparseSet *set = &ctx->sets[t];
+
+    return sparse_set_get(set, e);
+}
+
 TypeID ecs_register_component(const char *name, u64 stride) {
     ECSContext *ctx = active_ctx;
-
     if (!ctx) exit(1);
 
     if (ctx->next_type_id >= ctx->capacity) {
