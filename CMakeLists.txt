@@ -28,5 +28,13 @@ add_executable(ecs
     ecs/ecs_p.c
     ecs/ecs.c
 )
-
 target_include_directories(ecs PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+# ECS stress test
+add_executable(ecsst
+    sparseset.c
+    ecs/ecsst.c
+    ecs/ecs.c
+    benchmarking/benchmark.c
+)
+target_include_directories(ecsst PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

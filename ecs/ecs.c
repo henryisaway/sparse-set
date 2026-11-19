@@ -32,7 +32,16 @@ void ecs_init(void) {
 }
 
 void ecs_shutdown(void) {
-    if (active_ctx) free(active_ctx);
+    if (active_ctx) {
+        if (active_ctx->sets) {
+            DARRAY_FOREACH(SparseSet, set, active_ctx->sets) {
+                sparse_set_destroy(set);
+            }
+            DARRAY_FREE(active_ctx->sets);
+        }
+        free(active_ctx->type_strides);
+        free(active_ctx);
+    }
     active_ctx = NULL;
 }
 
@@ -57,8 +66,7 @@ bool entity_bind_component(TypeID t, Entity e, void *data) {
     if (t >= ctx->next_type_id) exit(1);
     SparseSet *set = &ctx->sets[t];
 
-    sparse_set_insert(set, e, data);
-    return true;
+    return sparse_set_insert(set, e, data);
 }
 
 void *entity_get_component(TypeID t, Entity e) {

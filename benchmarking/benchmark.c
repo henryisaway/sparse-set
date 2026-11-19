@@ -96,7 +96,8 @@ BenchmarkMetrics benchmark_collect_metrics(SparseSet *set, const char *test_name
         m.page_occupancy_pct = ((double)total_components / ((u64)m.allocated_pages * PAGE_SIZE)) * 100.0;
     }
 
-    m.dense_bytes           = (u64)set->capacity * sizeof(Position);
+    m.dense_capacity        = set->capacity;
+    m.dense_bytes           = (u64)set->capacity * set->stride;
     m.page_dir_bytes        = (u64)set->page_count * sizeof(u32 *);
     m.page_payload_bytes    = (u64)m.allocated_pages * PAGE_SIZE * sizeof(u32);
     m.struct_overhead_bytes = sizeof(SparseSet);
@@ -110,30 +111,27 @@ BenchmarkMetrics benchmark_collect_metrics(SparseSet *set, const char *test_name
 }
 
 BenchmarkMetrics benchmark_run(BenchmarkConfig config) {
-    SparseSet *set = sparse_set_create();
+    SparseSet set = sparse_set_create(config.name, sizeof(u32));
 
     struct timespec start, end;
     clock_gettime(CLOCK_MONOTONIC, &start);
 
     for (u64 i = 0; i < config.count; i++) {
         Entity ent = config.generator(i, config.count, config.userdata);
-        Position pos = {
-            .x = (u32)(rand() % 500),
-            .y = (u32)(rand() % 500)
-        };
-        sparse_set_insert(set, ent, pos);
+        u32 val = (u32)(rand() % 500);
+        sparse_set_insert(&set, ent, &val);
     }
 
     clock_gettime(CLOCK_MONOTONIC, &end);
 
     double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
-    BenchmarkMetrics metrics = benchmark_collect_metrics(set, config.name, config.count, elapsed);
+    BenchmarkMetrics metrics = benchmark_collect_metrics(&set, config.name, config.count, elapsed);
 
     if (!config.silent) {
         benchmark_print_metadata(&metrics);
     }
 
-    sparse_set_destroy(set);
+    sparse_set_destroy(&set);
     return metrics;
 }
 
@@ -155,7 +153,7 @@ void benchmark_print_metadata(const BenchmarkMetrics *m) {
 
     printf("  [Memory Footprint]\n");
     printf("    Dense Buffer Cap      : %'u entries (%8.2f MiB | %'lu B)\n",
-           (u32)(m->dense_bytes / sizeof(Position)),
+           m->dense_capacity,
            (double)m->dense_bytes / (1024.0 * 1024.0), (unsigned long)m->dense_bytes);
     printf("    Page Table Slots      : %'u slots   (%8.2f MiB | %'lu B)\n",
            m->page_count,

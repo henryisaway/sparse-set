@@ -1,5 +1,6 @@
 #include <stdint.h>
 
+typedef float    f32;
 typedef int8_t   i8;
 typedef int32_t  i32;
 typedef int64_t  i64;

@@ -22,6 +22,7 @@ typedef struct {
     u32         fill_buckets[4]; // [0-25%], [26-50%], [51-75%], [76-100%]
 
     // Memory footprint
+    u32         dense_capacity;
     u64         dense_bytes;
     u64         page_dir_bytes;
     u64         page_payload_bytes;
