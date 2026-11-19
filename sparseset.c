@@ -7,10 +7,12 @@
 #include <stdbool.h>
 #include "type_aliases.h"
 
-SparseSet *sparse_set_create(u64 stride) {
+/*
+SparseSet *sparse_set_create(const char *name, u64 stride) {
     SparseSet *set  = (SparseSet *)calloc(1, sizeof(SparseSet));
     if (!set) exit(1);
 
+    set->name       = name;
     set->capacity   = INIT_ALLOC_SIZE;
     set->page_count = 1;
     set->size       = 0;
@@ -27,6 +29,29 @@ SparseSet *sparse_set_create(u64 stride) {
     }
 
     *(set->sparse)  = NULL;
+
+    return set;
+}*/
+
+SparseSet sparse_set_create(const char *name, u64 stride) {
+    SparseSet set;
+
+    set.name       = name;
+    set.capacity   = INIT_ALLOC_SIZE;
+    set.page_count = 1;
+    set.size       = 0;
+    set.stride     = stride;
+    set.data       = calloc(set.capacity, stride);
+    set.owners     = calloc(set.capacity, sizeof(u32));
+    set.sparse     = (u32 **)calloc(set.page_count, sizeof(u32 *));
+
+    if (!set.data || !set.sparse) {
+        free(set.data);
+        free(set.sparse);
+        exit(1);
+    }
+
+    *(set.sparse)  = NULL;
 
     return set;
 }
@@ -123,10 +148,11 @@ bool sparse_set_insert(SparseSet *set, Entity e, void *data) {
     return true;
 }
 
-void sparse_set_debug_show(SparseSet *set) {
+void sparse_set_debug_show(const SparseSet *set) {
     if (!set) return;
 
     printf("{\n");
+    printf("\t.name = \"%s\"\n", set->name);
     printf("\t.page_count = %u\n", set->page_count);
     printf("\t.capacity = %u\n", set->capacity);
     printf("\t.size = %u\n", set->size);
@@ -138,5 +164,5 @@ void sparse_set_debug_show(SparseSet *set) {
         printf("%u", set->owners[i]);
     }
 
-    printf("]\n}\n");
+    printf("]\n}");
 }

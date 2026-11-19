@@ -1,23 +1,24 @@
 #include "ecs.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include "../darray.h" // Will be used in the future to allow for multiple sparse sets.
+#define MIRA_DARRAY_IMPL
+#include "../darray.h"
 #include "../sparseset.h"
 #include "../type_aliases.h"
 
-#define ECS_INIT_TYPE_COUNT 16
+#define ECS_INIT_TYPE_COUNT 2
 
 struct ECSContext {
-    Entity    next_entity_id;
-    TypeID    next_type_id;
-    u64       capacity;
-    u64      *type_strides;
-    SparseSet *set;
+    Entity            next_entity_id;
+    TypeID            next_type_id;
+    u64               capacity;
+    u64              *type_strides;
+    DARRAY(SparseSet) sets;
 };
 
 static ECSContext *active_ctx = NULL;
 
-void ecs_init() {
+void ecs_init(void) {
     ECSContext *new_ctx = malloc(sizeof(ECSContext));
     if (!new_ctx) exit(1);
 
@@ -29,7 +30,7 @@ void ecs_init() {
     active_ctx = new_ctx;
 }
 
-void ecs_shutdown() {
+void ecs_shutdown(void) {
     if (active_ctx) free(active_ctx);
     active_ctx = NULL;
 }
@@ -41,33 +42,35 @@ Entity entity_create(void) {
     return ctx->next_entity_id++;
 }
 
-void entity_reset_counter(void) {
+void entity_reset_ids(void) {
     ECSContext *ctx = active_ctx;
     if (!active_ctx) exit(1);
 
     ctx->next_entity_id = 0;
 }
 
-TypeID ecs_register_component(u64 stride) {
+TypeID ecs_register_component(const char *name, u64 stride) {
     ECSContext *ctx = active_ctx;
 
     if (!ctx) exit(1);
 
     if (ctx->next_type_id >= ctx->capacity) {
         u64 new_capacity = 2 * ctx->capacity;
+
         u64 *new_array   = realloc(ctx->type_strides, new_capacity * sizeof(u64));
         if (!new_array) exit(1);
+        ctx->type_strides = new_array;
 
         ctx->capacity = new_capacity;
     }
 
     ctx->type_strides[ctx->next_type_id] = stride;
-    ctx->set = sparse_set_create(stride);
+    DARRAY_PUSH(ctx->sets, sparse_set_create(name, stride));
 
     return ctx->next_type_id++;
 }
 
-void ecs_debug_show() {
+void ecs_debug_show(void) {
     ECSContext *ctx = active_ctx;
 
     printf("ECS Context =================================\n");
@@ -81,7 +84,13 @@ void ecs_debug_show() {
     }
 
     printf("]\n");
-    printf(".set = ");
-    sparse_set_debug_show(ctx->set);
+    printf(".set = [");
+
+    DARRAY_FOREACH(SparseSet, set, ctx->sets) {
+        if (set != ctx->sets) printf(",\n");
+        sparse_set_debug_show(set);
+    }
+
+    printf("]");
     printf("END =========================================\n");
 }
