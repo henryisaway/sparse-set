@@ -90,7 +90,7 @@ void *sparse_set_get(SparseSet *set, Entity e) {
 
 bool sparse_set_insert(SparseSet *set, Entity e, void *data) {
     u32 page_index  = (u32)(e >> 12);
-    u32 page_offset = (u32)(e % 4095);
+    u32 page_offset = (u32)(e % 4096);
 
     if (page_index >= set->page_count) {
         u32 new_page_count = page_index + 1;
@@ -124,6 +124,8 @@ bool sparse_set_insert(SparseSet *set, Entity e, void *data) {
         // Entity is already present
         return false;
     }
+
+    data_index = set->size;
 
     if (set->size == set->capacity) {
         u32 new_capacity = set->capacity * 2;
