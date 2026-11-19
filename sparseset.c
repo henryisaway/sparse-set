@@ -1,20 +1,11 @@
 #include "sparseset.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include "type_aliases.h"
-
-static Entity g_entity_count = 0;
-
-Entity entity_create(void) {
-    return g_entity_count++;
-}
-
-void entity_reset_counter(void) {
-    g_entity_count = 0;
-}
 
 SparseSet *sparse_set_create(u64 stride) {
     SparseSet *set  = (SparseSet *)calloc(1, sizeof(SparseSet));
@@ -130,4 +121,22 @@ bool sparse_set_insert(SparseSet *set, Entity e, void *data) {
     set->owners[data_index] = e;
     set->sparse[page_index][page_offset] = set->size++;
     return true;
+}
+
+void sparse_set_debug_show(SparseSet *set) {
+    if (!set) return;
+
+    printf("{\n");
+    printf("\t.page_count = %u\n", set->page_count);
+    printf("\t.capacity = %u\n", set->capacity);
+    printf("\t.size = %u\n", set->size);
+    printf("\t.stride = %lu\n", set->stride);
+    printf("\t.owners = [");
+
+    for (u32 i = 0; i < set->size; i++) {
+        if (i != 0) printf(", ");
+        printf("%u", set->owners[i]);
+    }
+
+    printf("]\n}\n");
 }
