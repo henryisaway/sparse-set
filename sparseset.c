@@ -67,7 +67,6 @@ void sparse_set_destroy(SparseSet *set) {
     free(set->sparse);
     free(set->owners);
     free(set->data);
-    free(set);
 }
 
 void *sparse_set_get(SparseSet *set, Entity e) {
@@ -140,6 +139,7 @@ bool sparse_set_insert(SparseSet *set, Entity e, void *data) {
         }
 
         set->data = new_data_array;
+        set->owners = new_owners_array;
         set->capacity = new_capacity;
     }
 
