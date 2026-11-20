@@ -69,7 +69,7 @@ bool entity_bind_component(TypeID t, Entity e, void *data) {
     return sparse_set_insert(set, e, data);
 }
 
-void *entity_get_component(TypeID t, Entity e) {
+void *ecs_get_component(TypeID t, Entity e) {
     ECSContext *ctx = active_ctx;
     if (!ctx) exit(1);
 
@@ -77,6 +77,24 @@ void *entity_get_component(TypeID t, Entity e) {
     SparseSet *set = &ctx->sets[t];
 
     return sparse_set_get(set, e);
+}
+
+void *ecs_get_data(TypeID t) {
+    ECSContext *ctx = active_ctx;
+    if (!ctx) exit(1);
+
+    if (t >= ctx->next_type_id) return NULL;
+    
+    return sparse_set_get_data(&ctx->sets[t]);
+}
+
+void *ecs_get_owners(TypeID t) {
+    ECSContext *ctx = active_ctx;
+    if (!ctx) exit(1);
+
+    if (t >= ctx->next_type_id) return NULL;
+    
+    return sparse_set_get_owners(&ctx->sets[t]);
 }
 
 TypeID ecs_register_component(const char *name, u64 stride) {
@@ -97,6 +115,66 @@ TypeID ecs_register_component(const char *name, u64 stride) {
     DARRAY_PUSH(ctx->sets, sparse_set_create(name, stride));
 
     return ctx->next_type_id++;
+}
+
+void ecs_for_each(TypeID t, System sys) {
+    ECSContext *ctx = active_ctx;
+    if (!ctx) exit(1);
+
+    // Type doesn't exist
+    if (t >= ctx->next_type_id) exit(1);
+
+    u32 size       = ctx->sets[t].size;
+    u64 stride     = ctx->type_strides[t];
+    void   *data   = ecs_get_data(t);
+    if (!data) exit(1);
+
+    for (u64 i = 0; i < size; i++) {
+        void *data_addr = (u8 *)(data) + (i * stride);
+
+        sys(data_addr);
+    }
+}
+
+void ecs_for_each2(TypeID t1, TypeID t2, System2 sys) {
+    ECSContext *ctx = active_ctx;
+    if (!ctx) exit(1);
+
+    // Check if both types exist
+    if (t1 >= ctx->next_type_id) exit(1);
+    if (t2 >= ctx->next_type_id) exit(1);
+
+    u32 size1 = ctx->sets[t1].size;
+    u32 size2 = ctx->sets[t2].size;
+
+    // Iterate over the smallest of the two sets
+    if (size1 < size2) {
+        u64 stride1 = ctx->type_strides[t1];
+        void *data1 = ecs_get_data(t1);
+        Entity *owners = ecs_get_owners(t1);
+
+        for (u64 i = 0; i < size1; i++) {
+            void *data1_addr = (u8 *)(data1) + (i * stride1);
+            Entity owner = owners[i];
+
+            void* data2 = ecs_get_component(t2, owner);
+
+            sys(data1_addr, data2);
+        }
+    } else {
+        u64 stride2 = ctx->type_strides[t2];
+        void *data2 = ecs_get_data(t2);
+        Entity *owners = ecs_get_owners(t2);
+
+        for (u64 i = 0; i < size2; i++) {
+            void *data2_addr = (u8 *)(data2) + (i * stride2);
+            Entity owner = owners[i];
+
+            void* data1 = ecs_get_component(t1, owner);
+
+            sys(data1, data2_addr);
+        }
+    }
 }
 
 void ecs_debug_show(void) {

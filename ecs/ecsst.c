@@ -135,6 +135,21 @@ static void phase_random(u64 attempts) {
 
 // ── Phase 3: System Simulation ────────────────────────────────────────────────
 
+static void update_positions(void* pos_ptr, void* vel_ptr) {
+    Position *p = pos_ptr;
+    Velocity *v = vel_ptr;
+
+    p->x += v->x;
+    p->y += v->y;
+    p->z += v->z;
+}
+
+static void update_health(void* health_ptr) {
+    Health *h = health_ptr;
+
+    if (h->hp > 0) h->hp--;
+}
+
 static void phase_simulate(u64 entity_count, u32 frames) {
     printf("\n  ── Phase 3: System Simulation (%u frames × %'llu entities) ──\n",
            frames, (unsigned long long)entity_count);
@@ -157,21 +172,10 @@ static void phase_simulate(u64 entity_count, u32 frames) {
     struct timespec t0;
     clock_gettime(CLOCK_MONOTONIC, &t0);
 
-    u64 updates = 0;
+    u64 updates = (u64)frames * entity_count * 2;
     for (u32 f = 0; f < frames; f++) {
-        for (u64 e = 0; e < entity_count; e++) {
-            Health *h = entity_get_component(hp_id, e);
-            if (!h || h->hp < 10) continue;
-
-            Position *p = entity_get_component(pos_id, e);
-            Velocity *v = entity_get_component(vel_id, e);
-            if (!p || !v) continue;
-
-            p->x += v->x;
-            p->y += v->y;
-            p->z += v->z;
-            updates++;
-        }
+        ecs_for_each(hp_id, update_health);
+        ecs_for_each2(pos_id, vel_id, update_positions);
     }
 
     double elapsed = elapsed_since(&t0);
@@ -181,8 +185,8 @@ static void phase_simulate(u64 entity_count, u32 frames) {
     printf("    Elapsed Time          : %.4f seconds\n", elapsed);
     printf("    Simulation Rate       : %.2f frames/sec\n",
            elapsed > 0.0 ? ((double)frames / elapsed) : 0.0);
-    printf("    Component Read Rate   : %.2f M lookups/sec\n",
-           elapsed > 0.0 ? ((double)(updates * 3) / elapsed / 1e6) : 0.0);
+    printf("    Component Process Rate: %.2f M updates/sec\n",
+           elapsed > 0.0 ? ((double)updates / elapsed / 1e6) : 0.0);
     printf("    Process Live RSS      : %8.2f MiB\n", (double)get_current_rss_kib() / 1024.0);
     printf("    Process Peak RSS      : %8.2f MiB\n", (double)get_peak_mem_usage() / 1024.0);
 

@@ -15,7 +15,7 @@ typedef struct {
     u32         size;
     u64         stride;
     void       *data;
-    u32        *owners;
+    Entity     *owners;
     u32       **sparse;
 } SparseSet;
 
@@ -39,8 +39,17 @@ void *sparse_set_get(SparseSet *set, Entity e);
 
 /** @brief Retrieves the pointer to the dense array inside of a given set.
  * @param[in] set The set from which to retrieve the dense array pointer.
+ * @return A pointer to the dense array inside of the given sparse set.
+ * @retval NULL if @p set is NULL.
  */
-void *sparse_set_get_dense(SparseSet *set);
+void *sparse_set_get_data(SparseSet *set);
+
+/** @brief Retrieves the pointer to the owners array inside of a given set.
+ * @param[in] set The set from which to retrieve the dense array pointer.
+ * @return A pointer to the owners array inside of the given sparse set.
+ * @retval NULL if @p set is NULL.
+ */
+Entity *sparse_set_get_owners(SparseSet *set);
 
 /** @brief Inserts data inside of a given set, associating an @p Entity ID with it.
  * @param[in] set A pointer to the sparse set where the data must be inserted into.

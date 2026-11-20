@@ -28,13 +28,13 @@ int main(void) {
     entity_bind_component(vel_ID, player, &(Velocity){.x = 1, .y = 2});
     entity_bind_component(hp_ID, player, &(u32){100});
 
-    Position *pos = (Position *) entity_get_component(pos_ID, player);
+    Position *pos = (Position *) ecs_get_component(pos_ID, player);
     printf("The position of Entity %lu is {%u, %u}\n", player, pos->x, pos->y);
 
-    Velocity *vel = (Velocity *) entity_get_component(vel_ID, player);
+    Velocity *vel = (Velocity *) ecs_get_component(vel_ID, player);
     printf("The velocity of Entity %lu is {%u, %u}\n", player, vel->x, vel->y);
 
-    Health *hp = (Health *) entity_get_component(hp_ID, player);
+    Health *hp = (Health *) ecs_get_component(hp_ID, player);
     printf("The health of Entity %lu is %u\n", player, *hp);
 
     ecs_debug_show();

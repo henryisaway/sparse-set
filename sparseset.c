@@ -42,7 +42,7 @@ SparseSet sparse_set_create(const char *name, u64 stride) {
     set.size       = 0;
     set.stride     = stride;
     set.data       = calloc(set.capacity, stride);
-    set.owners     = calloc(set.capacity, sizeof(u32));
+    set.owners     = calloc(set.capacity, sizeof(Entity));
     set.sparse     = (u32 **)calloc(set.page_count, sizeof(u32 *));
 
     if (!set.data || !set.sparse) {
@@ -85,6 +85,18 @@ void *sparse_set_get(SparseSet *set, Entity e) {
     }
 
     return (u8*)(set->data) + (data_index * set->stride);
+}
+
+void *sparse_set_get_data(SparseSet *set) {
+    if (!set) return NULL;
+
+    return set->data;
+}
+
+Entity *sparse_set_get_owners(SparseSet *set) {
+    if (!set) return NULL;
+
+    return set->owners;
 }
 
 bool sparse_set_insert(SparseSet *set, Entity e, void *data) {
@@ -133,7 +145,7 @@ bool sparse_set_insert(SparseSet *set, Entity e, void *data) {
             exit(1);
         }
 
-        void *new_owners_array = realloc(set->owners, new_capacity * sizeof(u32));
+        void *new_owners_array = realloc(set->owners, new_capacity * sizeof(Entity));
         if (!new_owners_array) {
             exit(1);
         }
@@ -163,7 +175,7 @@ void sparse_set_debug_show(const SparseSet *set) {
 
     for (u32 i = 0; i < set->size; i++) {
         if (i != 0) printf(", ");
-        printf("%u", set->owners[i]);
+        printf("%lu", set->owners[i]);
     }
 
     printf("]\n}");
