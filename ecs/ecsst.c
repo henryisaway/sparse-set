@@ -135,7 +135,7 @@ static void phase_random(u64 attempts) {
 
 // ── Phase 3: System Simulation ────────────────────────────────────────────────
 
-static void update_positions(void* pos_ptr, void* vel_ptr) {
+static inline void update_positions(void* pos_ptr, void* vel_ptr) {
     Position *p = pos_ptr;
     Velocity *v = vel_ptr;
 
@@ -144,7 +144,7 @@ static void update_positions(void* pos_ptr, void* vel_ptr) {
     p->z += v->z;
 }
 
-static void update_health(void* health_ptr) {
+static inline void update_health(void* health_ptr) {
     Health *h = health_ptr;
 
     if (h->hp > 0) h->hp--;
@@ -174,8 +174,8 @@ static void phase_simulate(u64 entity_count, u32 frames) {
 
     u64 updates = (u64)frames * entity_count * 2;
     for (u32 f = 0; f < frames; f++) {
-        ecs_for_each(hp_id, update_health);
-        ecs_for_each2(pos_id, vel_id, update_positions);
+        _ecs_for_each(hp_id, update_health);
+        _ecs_for_each2(pos_id, vel_id, update_positions);
     }
 
     double elapsed = elapsed_since(&t0);

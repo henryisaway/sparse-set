@@ -1,21 +1,13 @@
+#define MIRA_DARRAY_IMPL
 #include "ecs.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#define MIRA_DARRAY_IMPL
 #include "../darray.h"
 #include "../sparseset.h"
 #include "../type_aliases.h"
 
 #define ECS_INIT_TYPE_COUNT 2
-
-struct ECSContext {
-    Entity            next_entity_id;
-    TypeID            next_type_id;
-    u64               capacity;
-    u64              *type_strides;
-    DARRAY(SparseSet) sets;
-};
 
 static ECSContext *active_ctx = NULL;
 
@@ -30,6 +22,8 @@ void ecs_init(void) {
 
     active_ctx = new_ctx;
 }
+
+ECSContext *ecs_get_context() { return active_ctx; }
 
 void ecs_shutdown(void) {
     if (active_ctx) {
@@ -67,6 +61,14 @@ bool entity_bind_component(TypeID t, Entity e, void *data) {
     SparseSet *set = &ctx->sets[t];
 
     return sparse_set_insert(set, e, data);
+}
+
+SparseSet *ecs_get_set(TypeID t) {
+    ECSContext *ctx = active_ctx;
+    if (!ctx) exit(1);
+
+    if (t >= ctx->next_type_id) exit(1);
+    return &ctx->sets[t];
 }
 
 void *ecs_get_component(TypeID t, Entity e) {

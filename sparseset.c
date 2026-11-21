@@ -7,32 +7,6 @@
 #include <stdbool.h>
 #include "type_aliases.h"
 
-/*
-SparseSet *sparse_set_create(const char *name, u64 stride) {
-    SparseSet *set  = (SparseSet *)calloc(1, sizeof(SparseSet));
-    if (!set) exit(1);
-
-    set->name       = name;
-    set->capacity   = INIT_ALLOC_SIZE;
-    set->page_count = 1;
-    set->size       = 0;
-    set->stride     = stride;
-    set->data       = calloc(set->capacity, stride);
-    set->owners     = calloc(set->capacity, sizeof(u32));
-    set->sparse     = (u32 **)calloc(set->page_count, sizeof(u32 *));
-
-    if (!set->data || !set->sparse) {
-        free(set->data);
-        free(set->sparse);
-        free(set);
-        exit(1);
-    }
-
-    *(set->sparse)  = NULL;
-
-    return set;
-}*/
-
 SparseSet sparse_set_create(const char *name, u64 stride) {
     SparseSet set;
 
@@ -70,8 +44,8 @@ void sparse_set_destroy(SparseSet *set) {
 }
 
 void *sparse_set_get(SparseSet *set, Entity e) {
-    u32 page_index  = (u32)(e / PAGE_SIZE);
-    u32 page_offset = (u32)(e % PAGE_SIZE);
+    u32 page_index  = (u32)(e >> 12);
+    u32 page_offset = (u32)(e & (PAGE_SIZE - 1));
 
     if (page_index >= set->page_count)
         return NULL;
@@ -101,7 +75,7 @@ Entity *sparse_set_get_owners(SparseSet *set) {
 
 bool sparse_set_insert(SparseSet *set, Entity e, void *data) {
     u32 page_index  = (u32)(e >> 12);
-    u32 page_offset = (u32)(e % 4096);
+    u32 page_offset = (u32)(e & (PAGE_SIZE - 1));
 
     if (page_index >= set->page_count) {
         u32 new_page_count = page_index + 1;

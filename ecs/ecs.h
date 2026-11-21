@@ -3,11 +3,19 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "../sparseset.h"
+#include "../darray.h"
 #include "../type_aliases.h"
 
 typedef void (*System)(void*);
 typedef void (*System2)(void*, void*);
-typedef struct ECSContext ECSContext;
+typedef struct ECSContext {
+    Entity            next_entity_id;
+    TypeID            next_type_id;
+    u64               capacity;
+    u64              *type_strides;
+    DARRAY(SparseSet) sets;
+} ECSContext;
 
 /** @brief Registers a new component in the active ECS context.
  * @param[in] T The name of the component type.
@@ -15,6 +23,56 @@ typedef struct ECSContext ECSContext;
  */
 #define register_component(T) \
     ecs_register_component(#T, sizeof(T));
+
+#define _ecs_for_each(t, sys) do {\
+    ECSContext *__ctx = ecs_get_context();\
+    if (__ctx && t < __ctx->next_type_id) {\
+        u32 __size       = __ctx->sets[t].size;\
+        u64 __stride     = __ctx->type_strides[t];\
+        void   *__data   = ecs_get_data(t);\
+        if (__data) {\
+            for (Entity __e = 0; __e < __size; __e++) {\
+                void *__data_addr = (u8 *)(__data) + (__e * __stride);\
+                sys(__data_addr);\
+            }\
+        }\
+    }\
+} while(0)
+
+#define _ecs_for_each2(__t1, __t2, __sys) do {    \
+    ECSContext *__ctx = ecs_get_context();  \
+    if (__ctx && __t1 < __ctx->next_type_id && __t2 < __ctx->next_type_id) {                            \
+        u32 __size1 = __ctx->sets[__t1].size;\
+        u32 __size2 = __ctx->sets[__t2].size;\
+        if (__size1 < __size2) {\
+            u64 __stride1 = __ctx->type_strides[__t1];\
+            void *__data1 = ecs_get_data(__t1);\
+            if (__data1) {\
+                Entity *__owners = ecs_get_owners(__t1);\
+                SparseSet* __set2 = ecs_get_set(__t2);\
+                for (Entity __e = 0; __e < __size1; __e++) {\
+                    void *data1_addr = (u8 *)(__data1) + (__e * __stride1);\
+                    Entity __owner = __owners[__e];\
+                    void* __data2 = sparse_set_get(__set2, __owner);\
+                    __sys(data1_addr, __data2);\
+                }\
+            }\
+        } else {\
+            u64 __stride2 = __ctx->type_strides[__t2];\
+            void *__data2 = ecs_get_data(__t2);\
+            if (__data2) {\
+                Entity *__owners = ecs_get_owners(__t2);\
+                SparseSet* __set1 = ecs_get_set(__t1);\
+                for (Entity __e = 0; __e < __size2; __e++) {\
+                    void *__data2_addr = (u8 *)(__data2) + (__e * __stride2);\
+                    Entity __owner = __owners[__e];\
+                    void* __data1 = sparse_set_get(__set1, __owner);\
+                    __sys(__data1, __data2_addr);\
+                }\
+            }\
+        }\
+    }\
+} while(0)
 
 /** @brief Initialises the ECS context. */
 void ecs_init(void);
@@ -24,6 +82,9 @@ void ecs_shutdown(void);
 
 /** @brief Generates a new @p Entity ID. */
 Entity entity_create(void);
+
+/** @brief Returns a pointer to the currently active ECS context. */
+ECSContext *ecs_get_context(void);
 
 /** @brief Resets the entity ID generator back to 0. */
 void entity_reset_ids(void);
@@ -37,6 +98,8 @@ void entity_reset_ids(void);
  * @retval false If the binding failed.
  */
 bool entity_bind_component(TypeID t, Entity e, void *data);
+
+SparseSet *ecs_get_set(TypeID t);
 
 /** @brief Returns the component data for a given component type and entity.
  * @param[in] t The @p TypeID of the component to be retrieved.
